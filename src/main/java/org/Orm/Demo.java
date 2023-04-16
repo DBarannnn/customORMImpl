@@ -14,10 +14,10 @@ public class Demo {
 
         Person person = session.find(Person.class, 1L);
         person.setFirstName("Dmytro");
-        person.setLastName("Baran");
+        person.setLastName("Barann");
 
         Person person2 = session.find(Person.class, 2L);
-        person2.setLastName("Bylochnik");
+        person2.setLastName("Hello");
 
 
         session.close();

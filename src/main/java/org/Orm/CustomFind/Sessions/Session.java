@@ -98,52 +98,71 @@ public class Session {
         Object cachedObject = entry.getValue();
         Object initialObject = entityCopies.get(entry.getKey());
 
-        if(!areTheSameObjects(type, cachedObject, initialObject)) {updateObject(type ,cachedObject, entityKey);}
+        if(!areTheSameObjects(type, cachedObject, initialObject)) {updateObject(prepareUpdateObject(type ,cachedObject, entityKey));}
 
         }
     }
 
     @SneakyThrows
-    private<T> void updateObject(Class<T> type, Object cachedObject, EntityKey<?> entityKey) {
-        T updateObject = type.cast(cachedObject);
-        Table table = type.getAnnotation(Table.class);
-        String tableName = table.value();
+    private<T> void updateObject(String preparedUpdateQuery) {
 
-        List<Field> declaredAnnotatedFields = Arrays.stream(type.getDeclaredFields())
-                .filter(f -> f.isAnnotationPresent(Column.class))
-                .toList();
-
-        long number_of_db_columns = declaredAnnotatedFields.size();
-
-        //Defining what field name is storing primary key
-         Field id_field = declaredAnnotatedFields.stream().
-                filter(f -> f.isAnnotationPresent(Id.class))
-                 .findFirst().get();
-         String id_column_name = id_field.getAnnotation(Column.class).value();
-
-        String updateStatement = "UPDATE " + tableName + " SET ";
-        StringBuilder stringBuilder = new StringBuilder(updateStatement);
-
-        for(int i=0; i<number_of_db_columns; i++){
-           String columnName = declaredAnnotatedFields.get(i).getAnnotation(Column.class).value();
-           Object newColumnValue = declaredAnnotatedFields.get(i).get(updateObject);
-           if(i == number_of_db_columns-1) {
-               stringBuilder.append(columnName).append(" = ").append(formatObject(newColumnValue))
-                       .append(" WHERE ").append(id_column_name).append(" = ").append(entityKey.id());
-           }
-           else stringBuilder.append(columnName).append(" = ").append(formatObject(newColumnValue)).append(",");
-        }
-        System.out.println(stringBuilder.toString());
 
         try(var connection = dataSource.getConnection()){
-            PreparedStatement preparedUpdateStatement = connection.prepareStatement(stringBuilder.toString());
+            PreparedStatement preparedUpdateStatement = connection.prepareStatement(preparedUpdateQuery);
             preparedUpdateStatement.executeUpdate();
 
         }
 
     }
 
-    public Object formatObject(Object object){
+    @SneakyThrows
+    public <T> String prepareUpdateObject(Class<T> type, Object cachedObject,  EntityKey<?> entityKey){
+        //Cast updated Object
+        T updateObject = type.cast(cachedObject);
+        //
+        String tableName = type.getAnnotation(Table.class).value();
+
+        List<Field> declaredAnnotatedFields = findDeclaredAnnotatedFields(type);
+        long number_of_db_columns = declaredAnnotatedFields.size();
+
+        //Defining what field name is storing primary key
+        String id_column_name = findIdColumn(type);
+        String updateStatement = "UPDATE " + tableName + " SET ";
+        StringBuilder stringBuilder = new StringBuilder(updateStatement);
+
+        for(int i=0; i<number_of_db_columns; i++){
+            String columnName = declaredAnnotatedFields.get(i).getAnnotation(Column.class).value();
+            Object newColumnValue = declaredAnnotatedFields.get(i).get(updateObject);
+            if(i == number_of_db_columns-1) {
+                stringBuilder.append(columnName).append(" = ").append(formatObject(newColumnValue))
+                        .append(" WHERE ").append(id_column_name).append(" = ").append(entityKey.id());
+            }
+            else stringBuilder.append(columnName).append(" = ").append(formatObject(newColumnValue)).append(",");
+        }
+        System.out.println(stringBuilder.toString());
+        return stringBuilder.toString();
+
+    }
+
+    //Find all fields that are annotated with column
+    private <T> List<Field> findDeclaredAnnotatedFields(Class<T> type){
+        return   Arrays.stream(type.getDeclaredFields())
+                .filter(f -> f.isAnnotationPresent(Column.class))
+                .toList();
+    }
+
+    //Find columnName that represents primary key
+    private <T> String  findIdColumn(Class<T> type){
+        List<Field> declaredAnnotatedFields = findDeclaredAnnotatedFields(type);
+
+        Field id_field = declaredAnnotatedFields.stream().
+                filter(f -> f.isAnnotationPresent(Id.class))
+                .findFirst().get();
+        return  id_field.getAnnotation(Column.class).value();
+    }
+
+    //Convenient way to format object that is needed to be inserted in sql query/
+    private Object formatObject(Object object){
         if(object instanceof String){
             return "'"+ object.toString() + "'";
         }
